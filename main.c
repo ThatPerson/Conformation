@@ -291,84 +291,123 @@ int print_dir(struct Molecule *m) {
 	return 0;
 }
 
+int run_script(char *filename, struct Molecule *m) {
+	FILE * fp;
+	char line[255];
+	size_t len=255;
+	fp = fopen(filename, "r");
+	if (fp == NULL) {
+		printf("%s not found.\n", filename);
+		return -1;
+	}
+	
+	int c_line = 0;
+	int c_atom = 0;
+	struct Atom *ca;
+	float bl;
+	int A, B;
+	char command[255];
+	int c;
+	while (fgets(line, len, fp)) {
+		reset_check(m);
+
+		sscanf(line, "%255s %n", command, &c);
+		if (strcmp(command, "open") == 0) {
+			if (sscanf(line+c, "%255s", command) != 1) {
+				printf("error reading script\n%s", line);
+				break;
+			}
+			read_xyz(m, command);
+		} else if (strcmp(command, "bond") == 0) {
+			if (sscanf(line+c, "%f", &bl) != 1) {
+				printf("Error reading script\n%s", line);
+				break;
+			}
+			bond_xyz(m, bl);
+		} else if (strcmp(command, "rotate") == 0) {
+			if (sscanf(line+c, "%d %d %f", &A, &B, &bl) != 3) {
+				printf("Error reading script\n%s", line);
+				break;
+			}
+			reset_check(m);
+			rotate_about(&(m->as[A]), &(m->as[B]), bl);
+		} else if (strcmp(command, "output") == 0) {
+			if (sscanf(line+c, "%255s", command) != 1) {
+				printf("Error reading script\n%s", line);
+				break;
+			}
+			save_xyz(m, command);
+		}
+	}
+	fclose(fp);
+	return 1;
+}
+
 int main(int argc, char *argv[]) {
 	int i = 0;
 	float theta = 0;
-	if (argc >= 2)
-		i = atoi(argv[1]);
-	if (argc >= 3)
-		theta = atof(argv[2]);
-		
+
 	struct Molecule mol;
 	mol.n_atoms = 0;
 	char command[255];
 	int n, A, B;
 
-	do {
-		reset_check(&mol);
-		printf("> ");
-		scanf("%255s", command);
-		printf("%s\n", command);
-		if (strcmp(command, "open") == 0) {
-			printf(" filename > ");
-			scanf("%255s", command);
-			read_xyz(&mol, command);
-		} else if (strcmp(command, "bond") == 0) {
-			printf(" max bond length (ang) > ");
-			scanf("%255s", command);
-			bond_xyz(&mol, atof(command));
-		} else if (strcmp(command, "graph") == 0) {
-			printf(" start atom > ");
-			if (scanf("%d", &n) == 1)
-				print_molecule(&(mol.as[n]));
-		} else if (strcmp(command, "print") == 0) {
-			print_dir(&mol);
-		} else if (strcmp(command, "rotate") == 0) {
-			printf("This will perform a rotation about axis defined A -> B\n");
-			printf("e.g. keeping A side atoms fixed, and rotating B connected atoms\n");
-			printf("by an amount theta.\n");
-			printf(" A > ");
-			if (scanf("%s", command) != 1)
-				continue;
-			A = atoi(command);
-			printf(" B > ");
-			if (scanf("%s", command) != 1)
-				continue;
-			B = atoi(command);
-			printf(" theta > ");
-			if (scanf("%s", command) != 1)
-				continue;
-			theta = atof(command);
+	char script_name[255];
+	if (argc >= 2) {
+		strcpy(script_name, argv[1]);
+		run_script(script_name, &mol);
+	} else {
+		do {
 			reset_check(&mol);
-			rotate_about(&(mol.as[A]), &(mol.as[B]), theta);
-		} else if (strcmp(command, "output") == 0) {
-			printf(" filename > ");
-			if (scanf("%255s", command) != 1)
-				continue;
-			save_xyz(&mol, command);
-		}
+			printf("> ");
+			scanf("%255s", command);
+			printf("%s\n", command);
+			if (strcmp(command, "open") == 0) {
+				printf(" filename > ");
+				scanf("%255s", command);
+				read_xyz(&mol, command);
+			} else if (strcmp(command, "bond") == 0) {
+				printf(" max bond length (ang) > ");
+				scanf("%255s", command);
+				bond_xyz(&mol, atof(command));
+			} else if (strcmp(command, "graph") == 0) {
+				printf(" start atom > ");
+				if (scanf("%d", &n) == 1)
+					print_molecule(&(mol.as[n]));
+			} else if (strcmp(command, "print") == 0) {
+				print_dir(&mol);
+			} else if (strcmp(command, "rotate") == 0) {
+				printf("This will perform a rotation about axis defined A -> B\n");
+				printf("e.g. keeping A side atoms fixed, and rotating B connected atoms\n");
+				printf("by an amount theta.\n");
+				printf(" A > ");
+				if (scanf("%s", command) != 1)
+					continue;
+				A = atoi(command);
+				printf(" B > ");
+				if (scanf("%s", command) != 1)
+					continue;
+				B = atoi(command);
+				printf(" theta > ");
+				if (scanf("%s", command) != 1)
+					continue;
+				theta = atof(command);
+				reset_check(&mol);
+				rotate_about(&(mol.as[A]), &(mol.as[B]), theta);
+			} else if (strcmp(command, "output") == 0) {
+				printf(" filename > ");
+				if (scanf("%255s", command) != 1)
+					continue;
+				save_xyz(&mol, command);
+			} else if (strcmp(command, "run") == 0) {
+				printf(" script > ");
+				if (scanf("%255s", command) != 1)
+					continue;
+				run_script(command, &mol);
+			}
+		} while (strcmp(command, "exit") != 0);
+	}
 	
-	} while (strcmp(command, "exit") != 0);
-	
-	
-	return -1;
-	mol.n_atoms = 4; // as illustrative example
-	mol.as = (struct Atom *) malloc(sizeof(struct Atom) * mol.n_atoms);
-	add_atom(&(mol.as[0]), 0, 0, 0, "H");
-	add_atom(&(mol.as[1]), 1, 1, 0, "H");
-	add_atom(&(mol.as[2]), 1, 2, 0, "H");
-	add_atom(&(mol.as[3]), 2, 2, 0, "H");
-	add_bond(&(mol.as[0]), &(mol.as[1]));
-	add_bond(&(mol.as[1]), &(mol.as[2]));
-	add_bond(&(mol.as[2]), &(mol.as[3]));
-	
-	printf("Pre Rotation\n");
-	print_molecule(&(mol.as[i]));
-	reset_check(&mol);
-	rotate_about(&(mol.as[1]), &(mol.as[2]), theta);
-	reset_check(&mol);
-	printf("Post Rotation\n");
-	print_molecule(&(mol.as[i]));
 	free_atoms(&mol);
 	free(mol.as);
 	return 1;
