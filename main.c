@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -27,7 +28,7 @@ struct Molecule {
 	int n_atoms;
 };
 
-int add_atom(struct Atom *a, float x, float y, float z) {
+int add_atom(struct Atom *a, float x, float y, float z, char name[2]) {
 	a->v.x = x;
 	a->v.y = y;
 	a->v.z = z;
@@ -35,6 +36,7 @@ int add_atom(struct Atom *a, float x, float y, float z) {
 	a->lim_bonds = INITIAL_BONDS;
 	a->rotate = FALSE;
 	a->check = FALSE;
+	strcpy(a->name, name);
 	a->bonds = (struct Atom **) malloc(sizeof(struct Atom *) * INITIAL_BONDS);
 	return 1;
 }
@@ -154,10 +156,16 @@ void rotate(struct Atom *a, struct Vector *v, struct Vector * offset, float thet
 	return;
 }
 
-void normalise(struct Vector *v) {
+float magnitude(struct Vector *v) {
 	float n;
 	n = powf(v->x, 2.) + powf(v->y, 2.) + powf(v->z, 2.);
 	n = sqrtf(n);
+	return n;
+}
+
+void normalise(struct Vector *v) {
+	float n = magnitude(v);
+	
 	v->x /= n;
 	v->y /= n;
 	v->z /= n;
@@ -183,6 +191,25 @@ int rotate_about(struct Atom *a, struct Atom *b, float theta) {
 	rotate(b, &rotate_about, &offset, theta);
 	return 1;
 }
+	
+
+void bond_xyz(struct Molecule *m, float bl) {
+	int i, j;
+	struct Vector temp;
+	for (i = 0; i < m->n_atoms; i++) {
+		for (j = i+1; j < m->n_atoms; j++) {
+			if (i == j)
+				continue;
+			sub_vector(&(m->as[i].v), &(m->as[j].v), &temp);
+			if (magnitude(&temp) < bl) {
+				add_bond(&(m->as[i]), &(m->as[j]));
+				printf("Bonding %d - %d\n", i, j);
+			}
+			//printf("%d - %d %f\n", i, j, magnitude(&temp));
+		}
+	}
+	return;
+}
 
 int read_xyz(struct Molecule *m, char *filename) {
 	FILE * fp;
@@ -193,12 +220,75 @@ int read_xyz(struct Molecule *m, char *filename) {
 		printf("%s not found.\n", filename);
 		return -1;
 	}
-
+	
+	int c_line = 0;
+	int c_atom = 0;
+	struct Atom *ca;
 	while (fgets(line, len, fp)) {
-		printf("%s\n", line);
+		if (c_line == 0) {
+			int k = sscanf(line, "%d\n", &(m->n_atoms));
+			if (k != 1) {
+				fclose(fp);
+				return -1;
+			}
+			m->as = (struct Atom *) malloc(sizeof(struct Atom) * m->n_atoms);
+		} else if (c_line >= 2) {
+			ca = &(m->as[c_line - 2]);
+			char *token = strtok(line, " \t");
+			//int k = sscanf(line, "%2s\t%f\t%f\t%f\n", ca->name, &(ca->v.x), &(ca->v.y), &(ca->v.z));
+			
+			//C          0.87880        0.05090       -0.00750
+			int i = 0;
+			float x, y, z;
+			char name[2];
+			while (token) {
+				switch (i) {
+					case 0: sprintf(name, "%2s", token); break;
+					case 1: x = atof(token); break;
+					case 2: y = atof(token); break;
+					case 3: z = atof(token); break;
+					default: fclose(fp); return -1; break;
+				}
+				i++;
+
+				token = strtok(NULL, " \t");
+			}
+			add_atom(ca, x, y, z, name);
+			printf("%s :: (%f, %f, %f) %d\n", ca->name, ca->v.x, ca->v.y, ca->v.z, c_line-2);
+		}
+		c_line++;
 	}
 	fclose(fp);
 	return 1;
+}
+
+int save_xyz(struct Molecule *m, char *filename) {
+	FILE * fp;
+	fp = fopen(filename, "w");
+	if (fp == NULL)
+		return -1;
+	
+	fprintf(fp, "%d\n\n", m->n_atoms);
+	int i;
+	for (i = 0; i < m->n_atoms; i++) {
+		fprintf(fp, "%2s\t%-2.6f\t%-2.6f\t%-2.6f\n", m->as[i].name, \
+			m->as[i].v.x,\
+			m->as[i].v.y,\
+			m->as[i].v.z);
+	}
+	
+	fclose(fp);
+}
+
+int print_dir(struct Molecule *m) {
+	int i;
+	for (i = 0; i < m->n_atoms; i++) {
+		printf("%d\t%2s\t%-2.6f\t%-2.6f\t%-2.6f\n", i, m->as[i].name, \
+			m->as[i].v.x,\
+			m->as[i].v.y,\
+			m->as[i].v.z);
+	}
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -210,16 +300,64 @@ int main(int argc, char *argv[]) {
 		theta = atof(argv[2]);
 		
 	struct Molecule mol;
+	mol.n_atoms = 0;
+	char command[255];
+	int n, A, B;
+
+	do {
+		reset_check(&mol);
+		printf("> ");
+		scanf("%255s", command);
+		printf("%s\n", command);
+		if (strcmp(command, "open") == 0) {
+			printf(" filename > ");
+			scanf("%255s", command);
+			read_xyz(&mol, command);
+		} else if (strcmp(command, "bond") == 0) {
+			printf(" max bond length (ang) > ");
+			scanf("%255s", command);
+			bond_xyz(&mol, atof(command));
+		} else if (strcmp(command, "graph") == 0) {
+			printf(" start atom > ");
+			if (scanf("%d", &n) == 1)
+				print_molecule(&(mol.as[n]));
+		} else if (strcmp(command, "print") == 0) {
+			print_dir(&mol);
+		} else if (strcmp(command, "rotate") == 0) {
+			printf("This will perform a rotation about axis defined A -> B\n");
+			printf("e.g. keeping A side atoms fixed, and rotating B connected atoms\n");
+			printf("by an amount theta.\n");
+			printf(" A > ");
+			if (scanf("%s", command) != 1)
+				continue;
+			A = atoi(command);
+			printf(" B > ");
+			if (scanf("%s", command) != 1)
+				continue;
+			B = atoi(command);
+			printf(" theta > ");
+			if (scanf("%s", command) != 1)
+				continue;
+			theta = atof(command);
+			reset_check(&mol);
+			rotate_about(&(mol.as[A]), &(mol.as[B]), theta);
+		} else if (strcmp(command, "output") == 0) {
+			printf(" filename > ");
+			if (scanf("%255s", command) != 1)
+				continue;
+			save_xyz(&mol, command);
+		}
 	
-	//read_xyz(&mol, "mp.xyz");
+	} while (strcmp(command, "exit") != 0);
 	
-	//return -1;
+	
+	return -1;
 	mol.n_atoms = 4; // as illustrative example
 	mol.as = (struct Atom *) malloc(sizeof(struct Atom) * mol.n_atoms);
-	add_atom(&(mol.as[0]), 0, 0, 0);
-	add_atom(&(mol.as[1]), 1, 1, 0);
-	add_atom(&(mol.as[2]), 1, 2, 0);
-	add_atom(&(mol.as[3]), 2, 2, 0);
+	add_atom(&(mol.as[0]), 0, 0, 0, "H");
+	add_atom(&(mol.as[1]), 1, 1, 0, "H");
+	add_atom(&(mol.as[2]), 1, 2, 0, "H");
+	add_atom(&(mol.as[3]), 2, 2, 0, "H");
 	add_bond(&(mol.as[0]), &(mol.as[1]));
 	add_bond(&(mol.as[1]), &(mol.as[2]));
 	add_bond(&(mol.as[2]), &(mol.as[3]));
@@ -235,4 +373,3 @@ int main(int argc, char *argv[]) {
 	free(mol.as);
 	return 1;
 }
-
