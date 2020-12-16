@@ -398,9 +398,9 @@ int read_xyz(struct Molecule *m, char *filename) {
  * returns: -1 if file does not open
  *           1 otherwise
  */
-int save_xyz(struct Molecule *m, char *filename) {
+int save_xyz(struct Molecule *m, char *filename, char * mode) {
 	FILE * fp;
-	fp = fopen(filename, "w");
+	fp = fopen(filename, mode);
 	if (fp == NULL)
 		return -1;
 	
@@ -430,6 +430,19 @@ int print_dir(struct Molecule *m) {
 	return 0;
 }
 
+/* generates animation in which bond *a-*b is rotated an amount theta
+ * and output (appended) n times. Can be visualised eg in jmol quite
+ * nicely. */
+void animate(struct Molecule*m, struct Atom *a, struct Atom *b, float theta, int n, char *fn) {
+	int i;
+	for (i = 0; i < n; i++) {	
+		reset_check(m);
+		rotate_about(a, b, theta);
+		save_xyz(m, fn, "a");
+	}
+	return;
+}
+
 /* run_script()
  *  Runs script in file *filename on molecule *m
  * Commands;
@@ -445,7 +458,6 @@ int print_dir(struct Molecule *m) {
  * returns: -1 if file not available
  *           1 on success
  */
- 
 int run_script(char *filename, struct Molecule *m) {
 	FILE * fp;
 	char line[255];
@@ -459,8 +471,8 @@ int run_script(char *filename, struct Molecule *m) {
 	int c_line = 0;
 	int c_atom = 0;
 	struct Atom *ca;
-	float bl;
-	int A, B;
+	float bl, theta;
+	int A, B, n;
 	char command[255];
 	int c;
 	while (fgets(line, len, fp)) {
@@ -490,12 +502,19 @@ int run_script(char *filename, struct Molecule *m) {
 			}
 			reset_check(m);
 			rotate_about(&(m->as[A]), &(m->as[B]), bl);
+		 } else if (strcmp(command, "animate") == 0) {
+				if (sscanf(line+c, "%d %d %f", &A, &B, &theta, &n, command) != 5) {
+					printf("Error reading script\n%s", line);
+					break;
+				}
+				reset_check(m);
+				animate(m, &(m->as[A]), &(m->as[B]), theta, n, command);
 		} else if (strcmp(command, "output") == 0) {
 			if (sscanf(line+c, "%255s", command) != 1) {
 				printf("Error reading script\n%s", line);
 				break;
 			}
-			save_xyz(m, command);
+			save_xyz(m, command, "w");
 		}
 	}
 	fclose(fp);
@@ -570,7 +589,14 @@ int main(int argc, char *argv[]) {
 				printf(" filename > ");
 				if (scanf("%255s", command) != 1)
 					continue;
-				save_xyz(&mol, command);
+				save_xyz(&mol, command, "w");
+			} else if (strcmp(command, "animate") == 0) {
+				if (scanf("%d %d %f %d %s", &A, &B, &theta, &n, command) != 5) {
+					printf("Please pass args\n");
+					break;
+				}
+				reset_check(&mol);
+				animate(&mol, &(mol.as[A]), &(mol.as[B]), theta, n, command);
 			} else if (strcmp(command, "run") == 0) {
 				printf(" script > ");
 				if (scanf("%255s", command) != 1)
