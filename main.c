@@ -503,7 +503,7 @@ int run_script(char *filename, struct Molecule *m) {
 			reset_check(m);
 			rotate_about(&(m->as[A]), &(m->as[B]), bl);
 		 } else if (strcmp(command, "animate") == 0) {
-				if (sscanf(line+c, "%d %d %f", &A, &B, &theta, &n, command) != 5) {
+				if (sscanf(line+c, "%d %d %f %d %s", &A, &B, &theta, &n, command) != 5) {
 					printf("Error reading script\n%s", line);
 					break;
 				}
